@@ -1,73 +1,89 @@
 import React, { Component } from 'react';
-import { Button, Table } from 'semantic-ui-react';
-import { Link } from '../../../routes';
-import Layout from '../../../components/Layout';
+import { Form, Button, Message, Input } from 'semantic-ui-react';
 import Campaign from '../../../ethereum/campaign';
-import RequestRow from '../../../components/RequestRow';
+import web3 from '../../../ethereum/web3';
+import { Link, Router } from '../../../routes';
+import Layout from '../../../components/Layout';
 
-class RequestIndex extends Component {
+class RequestNew extends Component {
+  state = {
+    value: '',
+    description: '',
+    recipient: '',
+    loading: false,
+    errorMessage: ''
+  };
+
   static async getInitialProps(props) {
     const { address } = props.query;
-    const campaign = Campaign(address);
-    const requestCount = await campaign.methods.getRequestsCount().call();
-    const approversCount = await campaign.methods.approversCount().call();
 
-    const requests = await Promise.all(
-      Array(parseInt(requestCount))
-        .fill()
-        .map((element, index) => {
-          return campaign.methods.requests(index).call();
-        })
-    );
-
-    return { address, requests, requestCount, approversCount };
+    return { address };
   }
 
-  renderRows() {
-    return this.props.requests.map((request, index) => {
-      return (
-        <RequestRow
-          key={index}
-          id={index}
-          request={request}
-          address={this.props.address}
-          approversCount={this.props.approversCount}
-        />
-      );
-    });
-  }
+  onSubmit = async event => {
+    event.preventDefault();
+
+    const campaign = Campaign(this.props.address);
+    const { description, value, recipient } = this.state;
+
+    this.setState({ loading: true, errorMessage: '' });
+
+    try {
+      const accounts = await web3.eth.getAccounts();
+      await campaign.methods
+        .createRequest(description, web3.utils.toWei(value, 'ether'), recipient)
+        .send({ from: accounts[0] });
+
+      Router.pushRoute(`/campaigns/${this.props.address}/requests`);
+    } catch (err) {
+      this.setState({ errorMessage: err.message });
+    }
+
+    this.setState({ loading: false });
+  };
 
   render() {
-    const { Header, Row, HeaderCell, Body } = Table;
-
     return (
       <Layout>
-        <h3>Requests</h3>
-        <Link route={`/campaigns/${this.props.address}/requests/new`}>
-          <a>
-            <Button primary floated="right" style={{ marginBottom: 10 }}>
-              Add Request
-            </Button>
-          </a>
+        <Link route={`/campaigns/${this.props.address}/requests`}>
+          <a>Back</a>
         </Link>
-        <Table>
-          <Header>
-            <Row>
-              <HeaderCell>ID</HeaderCell>
-              <HeaderCell>Description</HeaderCell>
-              <HeaderCell>Amount</HeaderCell>
-              <HeaderCell>Recipient</HeaderCell>
-              <HeaderCell>Approval Count</HeaderCell>
-              <HeaderCell>Approve</HeaderCell>
-              <HeaderCell>Finalize</HeaderCell>
-            </Row>
-          </Header>
-          <Body>{this.renderRows()}</Body>
-        </Table>
-        <div>Found {this.props.requestCount} requests.</div>
+        <h3>Create a Request</h3>
+        <Form onSubmit={this.onSubmit} error={!!this.state.errorMessage}>
+          <Form.Field>
+            <label>Description</label>
+            <Input
+              value={this.state.description}
+              onChange={event =>
+                this.setState({ description: event.target.value })}
+            />
+          </Form.Field>
+
+          <Form.Field>
+            <label>Value in Ether</label>
+            <Input
+              value={this.state.value}
+              onChange={event => this.setState({ value: event.target.value })}
+            />
+          </Form.Field>
+
+          <Form.Field>
+            <label>Recipient</label>
+            <Input
+              value={this.state.recipient}
+              onChange={event =>
+                this.setState({ recipient: event.target.value })}
+            />
+          </Form.Field>
+
+          <Message error header="Oops!" content={this.state.errorMessage} />
+          <Button primary loading={this.state.loading}>
+            Create!
+          </Button>
+        </Form>
       </Layout>
     );
   }
 }
 
-export default RequestIndex;
+export default RequestNew;
